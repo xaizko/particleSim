@@ -27,15 +27,15 @@ struct point createDefaultPoint() {
     
     srand(time(NULL));
 
-    // Random velocity between -5 and 5, excluding 0
+    // Random velocity between 0 and 20, excluding 0
     do {
-        p.xvel = (rand() % 11) - 5;
+        p.xvel = (rand() % 20);
     } while (p.xvel == 0);
 
     do {
-        p.yvel = (rand() % 11) - 5;
+        p.yvel = (rand() % 20);
     } while (p.yvel == 0);
-    
+
     return p;
 }
 
@@ -104,20 +104,27 @@ void moveParticle(struct point *p) {
 
     // Bounce on X-axis
     if (p->xcord <= 0 || p->xcord >= 800) {
-        p->xvel = -p->xvel;
+        // flip x direction randomly (with 50% chance)
+        if (rand() % 2 == 0) {
+            p->xvel = -p->xvel;
+        }
+        // Clamp position
         if (p->xcord < 0) p->xcord = 0;
         if (p->xcord > 800) p->xcord = 800;
     }
 
     // Bounce on Y-axis
     if (p->ycord <= 0 || p->ycord >= 800) {
-        p->yvel = -p->yvel;
+        if (rand() % 2 == 0) {
+            p->yvel = -p->yvel;
+        }
         if (p->ycord < 0) p->ycord = 0;
         if (p->ycord > 800) p->ycord = 800;
     }
 
     drawCircle(renderer, p->xcord, p->ycord, 10);
 }
+
 
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
