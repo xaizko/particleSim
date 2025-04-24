@@ -2,7 +2,10 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdlib.h>  
-#include <time.h>    
+#include <time.h>
+#include <stdio.h>
+const float magnetStrength = 5.0f; 
+
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -11,30 +14,28 @@ static struct point particle;
 const int TARGET_FPS = 60;
 const int FRAME_DELAY = 1000 / TARGET_FPS;  // ~16 ms
 
-
-
 struct point {
-    int xcord;
-    int ycord;
-    int xvel;
-    int yvel;
+    float xcord;
+    float ycord;
+    float xvel;
+    float yvel;
 };
 
-struct point createDefaultPoint() {
+
+#define PARTICLE_COUNT 100
+static struct point particles[PARTICLE_COUNT];
+
+struct point createDefaultPoint(int seedOffset) {
     struct point p;
-    p.xcord = 400;
-    p.ycord = 400;
-    
-    srand(time(NULL));
+    srand(time(NULL) + seedOffset); // different seed per particle
+    p.xcord = rand() % 800;
+    p.ycord = rand() % 800;
 
-    // Random velocity between 0 and 20, excluding 0
-    do {
-        p.xvel = (rand() % 20);
-    } while (p.xvel == 0);
+    int speed = (rand() % 5) + 2;
+    p.xvel = (rand() % 2 == 0) ? speed : -speed;
 
-    do {
-        p.yvel = (rand() % 20);
-    } while (p.yvel == 0);
+    speed = (rand() % 5) + 2;
+    p.yvel = (rand() % 2 == 0) ? speed : -speed;
 
     return p;
 }
@@ -54,7 +55,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         return SDL_APP_FAILURE;
     }
 
-    particle = createDefaultPoint();
+    for (int i = 0; i < PARTICLE_COUNT; ++i) {
+        particles[i] = createDefaultPoint(i * 137); // prime offset to vary seeds
+    }
+    
 
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
@@ -62,6 +66,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
+    
+
+
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
     }
@@ -98,32 +105,59 @@ void drawCircle(SDL_Renderer *renderer, int centerX, int centerY, int radius)
     }
 }
 
-void moveParticle(struct point *p) {
+void moveParticle(struct point *p, float mouseX, float mouseY, bool mouseDown) {
+    float dx = mouseX - p->xcord;
+    float dy = mouseY - p->ycord;
+    float distance = SDL_sqrtf(dx * dx + dy * dy);
+    
+    if (mouseDown) {
+        if (distance > 50) { 
+            // Calculate the direction to move towards the mouse
+            float length = SDL_sqrtf(dx * dx + dy * dy);
+            if (length > 0) {
+                dx /= length;
+                dy /= length;
+
+                // Update the particle's velocity towards the mouse
+                p->xvel += dx * magnetStrength;
+                p->yvel += dy * magnetStrength;
+            }
+        } else {
+            // Once close enough to the mouse, start orbiting (perpendicular velocity)
+            float tempX = p->xvel;
+            float tempY = p->yvel;
+
+            // Calculate perpendicular velocity for orbital motion 
+            p->xvel = -dy * 0.5f;  
+            p->yvel = dx * 0.5f; 
+
+            // Smooth out the transition with the previous velocity
+            p->xvel += tempX * 0.3f;
+            p->yvel += tempY * 0.3f;
+        }
+    }
+
+    // Move the particle based on its velocity
     p->xcord += p->xvel;
     p->ycord += p->yvel;
 
-    // Bounce on X-axis
+    // Collision with walls 
     if (p->xcord <= 0 || p->xcord >= 800) {
-        // flip x direction randomly (with 50% chance)
-        if (rand() % 2 == 0) {
-            p->xvel = -p->xvel;
-        }
-        // Clamp position
+        p->xvel = -p->xvel;
         if (p->xcord < 0) p->xcord = 0;
         if (p->xcord > 800) p->xcord = 800;
     }
 
-    // Bounce on Y-axis
     if (p->ycord <= 0 || p->ycord >= 800) {
-        if (rand() % 2 == 0) {
-            p->yvel = -p->yvel;
-        }
+        p->yvel = -p->yvel;
         if (p->ycord < 0) p->ycord = 0;
         if (p->ycord > 800) p->ycord = 800;
     }
 
-    drawCircle(renderer, p->xcord, p->ycord, 10);
+    // Draw the particle
+    drawCircle(renderer, (int)p->xcord, (int)p->ycord, 5);
 }
+
 
 
 /* This function runs once per frame, and is the heart of the program. */
@@ -131,22 +165,35 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 {
     Uint64 start = SDL_GetTicks();
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    // Clear the screen (black background)
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);  // Black color
     SDL_RenderClear(renderer);
-    
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    //drawCircle(renderer, 400, 400, 10);
-    moveParticle(&particle);
+
+    SDL_SetRenderDrawColor(renderer, (rand() % 255), (rand() % 255), (rand() % 255), (rand() % 255)); 
+
+    // Get the current mouse position and check if the button is pressed
+    float mouseX, mouseY;
+    Uint32 buttons = SDL_GetMouseState(&mouseX, &mouseY);
+    bool mouseDown = buttons & SDL_BUTTON_LEFT;
+
+    // Loop through each particle and update its position based on mouse interaction
+    for (int i = 0; i < PARTICLE_COUNT; ++i) {
+        moveParticle(&particles[i], mouseX, mouseY, mouseDown);
+    }
+
+    // Update the display with the new particle positions
     SDL_RenderPresent(renderer);
 
+    // Frame rate control
     Uint64 end = SDL_GetTicks();
     int elapsed = (int)(end - start);
     if (elapsed < FRAME_DELAY) {
         SDL_Delay(FRAME_DELAY - elapsed);
     }
 
-    return SDL_APP_CONTINUE;  /* carry on with the program! */
+    return SDL_APP_CONTINUE;  // Continue the program
 }
+
 
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
