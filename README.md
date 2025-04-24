@@ -1,1 +1,1 @@
-A really bad "particle" sim. It's hard to call it that, as it doesn't really behave close to a particle. This was a fun project to get used to SDL3. 
+A really bad "particle" sim. It's hard to call it that, as it doesn't really behave close to a particle. This was a fun project to get used to SDL3. The movement is rather snappy because there is a lack of consideration for acceration and time. 
