@@ -29,10 +29,8 @@ const int FRAME_DELAY = 1000 / TARGET_FPS;  // ~16 ms
 struct point {
     float xcord;
     float ycord;
-    float zcord;  
     float xvel;
     float yvel;
-    float zvel;   
 };
 
 struct nucleus {
@@ -52,16 +50,12 @@ struct point createDefaultPoint(int seedOffset) {
     srand(time(NULL) + seedOffset); // different seed per particle
     p.xcord = rand() % 800;
     p.ycord = rand() % 800;
-    p.zcord = rand() % 800;
 
     int speed = (rand() % 5) + 2;
     p.xvel = (rand() % 2 == 0) ? speed : -speed;
 
     speed = (rand() % 5) + 2;
     p.yvel = (rand() % 2 == 0) ? speed : -speed;
-    
-    speed = (rand() % 5) + 2;
-    p.zvel = (rand() % 2 == 0) ? speed : -speed;
 
     return p;
 }
@@ -71,16 +65,12 @@ struct nucleus createDefaultNucleus(int seedOffset) {
     srand(time(NULL) + seedOffset); // different seed per nucleus
     n.center.xcord = rand() % 800;
     n.center.ycord = rand() % 800;
-    n.center.zcord = rand() % 800;
 
-    int speed = (rand() % 5) + 2;
+    int speed =(rand() % 5) + 2 ;
     n.center.xvel = (rand() % 2 == 0) ? speed : -speed;
 
     speed = (rand() % 5) + 2;
     n.center.yvel = (rand() % 2 == 0) ? speed : -speed;
-    
-    speed = (rand() % 5) + 2;
-    n.center.zvel = (rand() % 2 == 0) ? speed : -speed;
 
     n.magnetStrength = (rand() % 5) + 1; // Random strength between 1 and 5
 
@@ -153,95 +143,72 @@ void drawCircle(SDL_Renderer *renderer, int centerX, int centerY, int radius)
     }
 }
 
-void moveParticle(struct point *p, float nucleusX, float nucleusY, float nucleusZ) {
+void moveParticle(struct point *p, float nucleusX, float nucleusY) {
     // Calculate vector from particle to nucleus
     float dx = nucleusX - p->xcord;
     float dy = nucleusY - p->ycord;
-    float dz = nucleusZ - p->zcord;
-    float distance = SDL_sqrtf(dx * dx + dy * dy + dz * dz);
-    
-    static float uniqueAngles[PARTICLE_COUNT];
-    static bool initialized = false;
+    float distance = SDL_sqrtf(dx * dx + dy * dy);
     
     int particleIndex = (p - particles);
     if (particleIndex < 0 || particleIndex >= PARTICLE_COUNT) {
-        particleIndex = 0; // Fallback
+        particleIndex = 0; 
     }
-    
-    if (!initialized) {
-        for (int i = 0; i < PARTICLE_COUNT; i++) {
-            uniqueAngles[i] = (float)(i * 2 * M_PI / PARTICLE_COUNT);
-        }
-        initialized = true;
-    }
-    
-    uniqueAngles[particleIndex] += 0.01f * ((particleIndex % 5) + 1) / 5.0f;
-    
-    float orbitRadius = 100.0f + (particleIndex % 5) * 30.0f; // Different orbit sizes
     
     if (distance > 0) {
         dx /= distance;
         dy /= distance;
-        dz /= distance;
         
-        float angle = uniqueAngles[particleIndex];
+        // Define the minimum distance particles can get to the nucleus center
+        float minDistance = 40.0f;
+        float orbitRadius = 60.0f + (particleIndex % 5) * 10.0f;
         
-        float targetX = nucleusX + orbitRadius * SDL_cosf(angle) * SDL_cosf(angle * 0.5f);
-        float targetY = nucleusY + orbitRadius * SDL_sinf(angle) * SDL_cosf(angle * 0.5f);
-        float targetZ = nucleusZ + orbitRadius * SDL_sinf(angle * 0.5f);
-        
-        float zFactor = (p->zcord / 800.0f);
-        
-        // Move toward target position
-        float targetDx = targetX - p->xcord;
-        float targetDy = targetY - p->ycord;
-        float targetDz = targetZ - p->zcord;
-        float targetDistance = SDL_sqrtf(targetDx * targetDx + targetDy * targetDy + targetDz * targetDz);
-        
-        if (targetDistance > 0) {
-            p->xvel += (targetDx / targetDistance) * 0.5f;
-            p->yvel += (targetDy / targetDistance) * 0.5f;
-            p->zvel += (targetDz / targetDistance) * 0.5f;
+        if (distance < minDistance) {
+            // Repulsion force - stronger when closer to nucleus
+            float repulsionStrength = 0.5f * (minDistance - distance) / minDistance;
+            
+            // Apply repulsion force (away from nucleus)
+            p->xvel -= dx * repulsionStrength;
+            p->yvel -= dy * repulsionStrength;
+        } else {
+            // Normal attraction force - only when outside minimum distance
+            float attractionStrength = 0.1f + (distance - minDistance) / 400.0f;
+            
+            // Apply attraction force
+            p->xvel += dx * attractionStrength;
+            p->yvel += dy * attractionStrength;
+            
+            // Add a slight tangential force for orbital motion
+            float tangentialFactor = 0.05f;
+            p->xvel += -dy * tangentialFactor;
+            p->yvel += dx * tangentialFactor;
         }
         
-        p->xvel += dx * 0.1f;
-        p->yvel += dy * 0.1f;
-        p->zvel += dz * 0.1f;
-        
+        // Damping factor to prevent infinite acceleration
         p->xvel *= 0.98f;
         p->yvel *= 0.98f;
-        p->zvel *= 0.98f;
         
+        // Update position
         p->xcord += p->xvel;
         p->ycord += p->yvel;
-        p->zcord += p->zvel;
         
-        // Wall collisions for x and y
+        // Wall collisions
         if (p->xcord <= 0 || p->xcord >= 800) {
-            p->xvel = -p->xvel;
+            p->xvel = -p->xvel * 0.9f; // Lose some energy on collision
             if (p->xcord < 0) p->xcord = 0;
             if (p->xcord > 800) p->xcord = 800;
         }
         
         if (p->ycord <= 0 || p->ycord >= 800) {
-            p->yvel = -p->yvel;
+            p->yvel = -p->yvel * 0.9f; // Lose some energy on collision
             if (p->ycord < 0) p->ycord = 0;
             if (p->ycord > 800) p->ycord = 800;
         }
         
-        // Z-axis boundaries
-        if (p->zcord <= 0 || p->zcord >= 800) {
-            p->zvel = -p->zvel;
-            if (p->zcord < 0) p->zcord = 0;
-            if (p->zcord > 800) p->zcord = 800;
-        }
+        // Particle size
+        int particleRadius = 4;
         
-        // Calculate size based on z-position (depth)
-        zFactor = (p->zcord / 800.0f); // Normalize to 0-1 range
-        int particleRadius = (int)(2 + zFactor * 8); // Size varies from 2 to 10 based on z-position
-        
-        int alpha = (int)(100 + zFactor * 155);
-        SDL_SetRenderDrawColor(renderer, 0, 119, 204, alpha);
+        // Set particle color - blue
+        SDL_SetRenderDrawColor(renderer, 0, 119, 204, 255);
         
         drawCircle(renderer, (int)p->xcord, (int)p->ycord, particleRadius);
     }
@@ -270,7 +237,6 @@ void moveNucleus(struct nucleus *n, float mouseX, float mouseY, bool mouseDown) 
         // When not clicked, continue normal movement
         n->center.xcord += n->center.xvel;
         n->center.ycord += n->center.yvel;
-        n->center.zcord += n->center.zvel;
     }
 
     // Collision with walls
@@ -286,18 +252,40 @@ void moveNucleus(struct nucleus *n, float mouseX, float mouseY, bool mouseDown) 
         if (n->center.ycord > 800) n->center.ycord = 800;
     }
     
-    // Z-axis boundaries
-    if (n->center.zcord <= 0 || n->center.zcord >= 800) {
-        n->center.zvel = -n->center.zvel;
-        if (n->center.zcord < 0) n->center.zcord = 0;
-        if (n->center.zcord > 800) n->center.zcord = 800;
-    }
-    
-    // Adjust nucleus size based on z-position
-    float zFactor = (n->center.zcord / 800.0f);
-    int nucleusRadius = (int)(20 + zFactor * 20);
+    // Adjust nucleus size
+    int nucleusRadius = 20;
 
     drawCircle(renderer, (int)n->center.xcord, (int)n->center.ycord, nucleusRadius);
+}
+
+// Function to calculate repulsion between particles
+void calculateParticleRepulsion(struct point *particles, int particleCount) {
+    const float repulsionDistance = 15.0f; // Minimum distance between particles
+    const float repulsionStrength = 0.2f;  // Strength of the repulsion
+    
+    for (int i = 0; i < particleCount; i++) {
+        for (int j = i + 1; j < particleCount; j++) {
+            float dx = particles[j].xcord - particles[i].xcord;
+            float dy = particles[j].ycord - particles[i].ycord;
+            float distanceSquared = dx * dx + dy * dy;
+            
+            // Only apply repulsion if particles are close enough
+            if (distanceSquared < repulsionDistance * repulsionDistance && distanceSquared > 0) {
+                float distance = SDL_sqrtf(distanceSquared);
+                float force = repulsionStrength * (repulsionDistance - distance) / repulsionDistance;
+                
+                // Normalize direction vector
+                dx /= distance;
+                dy /= distance;
+                
+                // Apply repulsion to both particles in opposite directions
+                particles[i].xvel -= dx * force;
+                particles[i].yvel -= dy * force;
+                particles[j].xvel += dx * force;
+                particles[j].yvel += dy * force;
+            }
+        }
+    }
 }
 
 /* This function runs once per frame, and is the heart of the program. */
@@ -323,9 +311,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         moveNucleus(&necleuses[i], mouseX, mouseY, mouseDown);
         SDL_SetRenderDrawColor(renderer, 0, 119, 204, 255);
         for (int j = 0; j < PARTICLE_COUNT; j++) {
-            moveParticle(&particles[j], necleuses[i].center.xcord, necleuses[i].center.ycord, necleuses[i].center.zcord);
+            moveParticle(&particles[j], necleuses[i].center.xcord, necleuses[i].center.ycord);
         }
     }
+
+    // Apply particle-to-particle repulsion
+    calculateParticleRepulsion(particles, PARTICLE_COUNT);
 
     // Update the display with the new particle positions
     SDL_RenderPresent(renderer);
